@@ -77,6 +77,21 @@ QQC2.StackView {
         }
     }
 
+    Timer {
+        id: delayTimer
+        function setTimeout(callback, delayTime) {
+            delayTimer.interval = delayTime;
+            delayTimer.repeat = false;
+            delayTimer.triggered.connect(callback);
+            delayTimer.triggered.connect(function release () {
+                delayTimer.triggered.disconnect(callback);
+                delayTimer.triggered.disconnect(release);
+            });
+            delayTimer.start();
+        }
+    }
+
+
     function refreshImage() {
         getImageData().then(pickImage).catch(e => {
             console.error(e);
@@ -159,6 +174,7 @@ QQC2.StackView {
             url += `q=${encodeURIComponent(wallpaper.configuration.Query)}`
             console.error('using url: ' + url);
 
+            var errorCount = 0;
             const xhr = new XMLHttpRequest();
             xhr.onload = () => {
                 if (xhr.status != 200) {
@@ -174,14 +190,24 @@ QQC2.StackView {
                 res(data);
             };
             xhr.onerror = () => {
-                rej("failed to send request");
+                if (errorCount >= 3) {
+                    rej("failed to send request");
+                } else {
+                    ++errorCount;
+                    console.error('request error, queueing retry ' + errorCount + '/3');
+                    delayTimer.setTimeout(function () { sendRequest(xhr, url); }, 5000);
+                }
             };
-            xhr.open('GET', url);
-            xhr.setRequestHeader('X-API-Key', wallpaper.configuration.APIKey);
-            xhr.setRequestHeader('User-Agent','wallhaven-wallpaper-kde-plugin');
-            xhr.timeout = 15000;
-            xhr.send();
+            sendRequest(xhr, url);
         });
+    }
+
+    function sendRequest(request, url) {
+            request.open('GET', url);
+            request.setRequestHeader('X-API-Key', wallpaper.configuration.APIKey);
+            request.setRequestHeader('User-Agent','wallhaven-wallpaper-kde-plugin');
+            request.timeout = 15000;
+            request.send();
     }
 
     function pickImage(d) {
